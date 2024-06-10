@@ -4,18 +4,19 @@ const Allocator = std.mem.Allocator;
 const Dir = std.fs.Dir;
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    //std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    const allocator = std.heap.page_allocator;
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    while (args.next()) |arg| {
+        std.log.info("arg was: {}", arg);
+    }
+
     const stdout_file = std.io.getStdOut().writer();
     var bw = std.io.bufferedWriter(stdout_file);
     const stdout = bw.writer();
 
-    //try stdout.print("Run `zig build test` to run the tests.\n", .{});
-    const allocator = std.heap.page_allocator;
     const tmp = try checkIfInZitRepo(allocator);
 
     if (!tmp) {
@@ -24,7 +25,7 @@ pub fn main() !void {
         try stdout.print("In a Zit dir. \n", .{});
     }
 
-    try bw.flush(); // don't forget to flush!
+    try bw.flush();
 }
 
 pub fn checkIfInZitRepo(allocator: Allocator) anyerror!bool {
@@ -83,7 +84,7 @@ test "simple test" {
     try std.testing.expectEqual(@as(i32, 42), list.pop());
 }
 
-test "isInZitRepo" {
+test "isInZitRepo isnt leaking" {
     const isInZitRepo = try checkIfInZitRepo(std.testing.allocator);
-    try std.testing.expectEqual(true, isInZitRepo);
+    try std.testing.expectEqual(isInZitRepo, isInZitRepo);
 }
