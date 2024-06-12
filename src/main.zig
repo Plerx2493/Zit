@@ -9,27 +9,31 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
 
-    while (args.next()) |arg| {
-        std.log.info("arg was: {}", arg);
-    }
+    const progName = args.next().?;
+    std.log.info("cwd was: {s}", .{ .progName = progName });
 
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    const cwd1 = try std.process.getCwdAlloc(allocator);
+    defer allocator.free(cwd1);
+    std.log.info("cwd was: {s}", .{ .cwd = cwd1 });
+
+    const possibleCommand = args.next();
+
+    if (possibleCommand) |cmd| {
+        _ = cmd;
+    }
 
     const tmp = try checkIfInZitRepo(allocator);
 
     if (!tmp) {
-        try stdout.print("Not in a Zit dir. \n", .{});
+        std.log.info("Not in a Zit dir. \n", .{});
     } else {
-        try stdout.print("In a Zit dir. \n", .{});
+        std.log.info("In a Zit dir. \n", .{});
     }
-
-    try bw.flush();
 }
 
 pub fn checkIfInZitRepo(allocator: Allocator) anyerror!bool {
     var currentDir = try fs.cwd().openDir(".", Dir.OpenDirOptions{ .access_sub_paths = true, .iterate = true });
+
     while (!try isRootDir(currentDir, allocator)) {
         if (try dirContainsZitDir(currentDir)) {
             return true;
@@ -75,13 +79,6 @@ fn dirContainsZitDir(dir: Dir) anyerror!bool {
         }
     }
     return false;
-}
-
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
 }
 
 test "isInZitRepo isnt leaking" {
