@@ -5,7 +5,10 @@ const Dir = std.fs.Dir;
 const Zit = @import("Zit.zig");
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
 
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
@@ -24,10 +27,18 @@ pub fn main() !void {
         return;
     }
 
-    const isRepo = try Zit.checkIfInRepo(allocator);
+    const repoPath = try Zit.checkIfInRepo(allocator);
+    var repo: ?Zit.Repository = null;
+    if (repoPath) |path| {
+        repo = try Zit.Repository.parse(path, allocator);
+
+        std.log.debug("Zit repo parsed: repo.path = {s}", .{ .path = repo.?.path });
+        std.log.debug("Zit repo parsed: repo.version = {s}", .{ .version = repo.?.version });
+        std.log.debug("Zit repo parsed: repo.branches.len = {d}", .{ .version = repo.?.branches.?.len });
+    }
 
     if (std.mem.eql(u8, possibleCommand.?, "init")) {
-        if (isRepo) {
+        if (repoPath != null) {
             std.log.err("Already a Zit repo", .{});
             return;
         }
@@ -41,5 +52,5 @@ pub fn main() !void {
 }
 
 pub fn showHelp() void {
-    std.log.info("Zit was invoked without any param or the command could not infered!\nCurently available commands:\n\t- init\t\tinitilize the current folder as a zit repo", .{});
+    std.log.info("Zit was invoked without any param or the command could not be infered!\nCurently available commands:\n\t- init\t\tinitilize the current folder as a zit repo", .{});
 }

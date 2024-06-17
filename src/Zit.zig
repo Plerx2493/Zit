@@ -4,14 +4,34 @@ const fs = std.fs;
 
 const ZitVersion = "v0.1.0";
 
-const Repository = struct {
+pub const Repository = struct {
     path: []u8,
-    branches: [][]u8,
-};
+    branches: ?[][]u8,
+    version: []u8,
 
-pub fn parseRepo(path: []u8) Repository {
-    return Repository{ .path = path };
-}
+    pub fn parse(path: []u8, allocator: Allocator) !Repository {
+        std.log.debug("Trying to parse zit repo at {s}", .{ .path = path });
+
+        const zitDir = try fs.openDirAbsolute(path, fs.Dir.OpenDirOptions{ .access_sub_paths = true, .iterate = true });
+
+        var iter = zitDir.iterate();
+
+        var potentialVersion: ?[]u8 = null;
+
+        while (try iter.next()) |entry| {
+            if (entry.kind == std.fs.File.Kind.file and std.mem.eql(u8, entry.name, "zitversion")) {
+                std.log.debug("Found zitversion", .{});
+                const versionFile = try zitDir.openFile(entry.name, fs.File.OpenFlags{});
+                defer versionFile.close();
+                potentialVersion = try versionFile.readToEndAlloc(allocator, 1024);
+            }
+
+            if (entry.kind == fs.File.Kind.directory and std.mem.eql(u8, entry.name, "zitversion")) {}
+        }
+
+        return Repository{ .version = potentialVersion.?, .path = path, .branches = null };
+    }
+};
 
 pub fn initRepo() !bool {
     std.log.info("parsed command \"init\"", .{});
@@ -29,16 +49,20 @@ pub fn initRepo() !bool {
     return true;
 }
 
-pub fn checkIfInRepo(allocator: Allocator) anyerror!bool {
+pub fn checkIfInRepo(allocator: Allocator) anyerror!?[]u8 {
     var currentDir = try fs.cwd().openDir(".", fs.Dir.OpenDirOptions{ .access_sub_paths = true, .iterate = true });
 
     while (!try isRootDir(currentDir, allocator)) {
         if (try dirContainsZitDir(currentDir)) {
-            return true;
+            const zitDir = try currentDir.openDir(".zit", fs.Dir.OpenDirOptions{});
+            return try zitDir.realpathAlloc(allocator, ".");
         }
-        currentDir = try currentDir.openDir("../", fs.Dir.OpenDirOptions{ .access_sub_paths = true, .iterate = true });
+
+        var oldDir = currentDir;
+        currentDir = try oldDir.openDir("../", fs.Dir.OpenDirOptions{ .access_sub_paths = true, .iterate = true });
+        oldDir.close();
     }
-    return false;
+    return null;
 }
 
 fn isRootDir(dir: fs.Dir, allocator: Allocator) anyerror!bool {
